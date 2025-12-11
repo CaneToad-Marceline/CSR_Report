@@ -1,0 +1,32 @@
+{
+  "created_at": {
+    "total_documents": 25,
+    "total_chunks": 5155,
+    "chunks_by_company": {
+      "Danone": 586,
+      "Indofood": 1705,
+      "Mayora": 525,
+      "Ultra_jaya": 103,
+      "Unilever": 2236
+    }
+  },
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "total_chunks": 5155,
+  "companies": [
+    "Danone",
+    "Indofood",
+    "Mayora",
+    "Ultra_jaya",
+    "Unilever"
+  ],
+  "years": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "vector_db_type": "FAISS"
+}
