@@ -6,18 +6,18 @@ streamlit==1.40.1
 python-dotenv==1.0.0
 
 # LangChain
-langchain==0.3.0
-langchain-community==0.3.0
-langchain-core==0.3.0
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
 
-# Vector store
-faiss-cpu==1.8.0
+# Vector store (Python 3.13 compatible)
+faiss-cpu>=1.9.0
 
 # Embeddings
-sentence-transformers==3.3.1
+sentence-transformers>=3.0.0
 
 # LLM API
-groq==0.11.0
+groq>=0.11.0
 
 # PDF processing (not needed for deployment but keep for reference)
 # PyMuPDF>=1.24.0
