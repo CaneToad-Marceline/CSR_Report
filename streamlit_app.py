@@ -94,8 +94,8 @@ st.markdown("""
 
 # Configuration
 VECTOR_DB_PATH = "faiss_index"
-# Use smaller, faster model for deployment
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# MUST match the model used to create FAISS index!
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 TOP_K_RESULTS = 4
 
