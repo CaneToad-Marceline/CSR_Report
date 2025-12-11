@@ -29,6 +29,46 @@ st.markdown("""
     /* Main container */
     .main {
         background-color: #1e1e1e;
+        overflow-x: hidden;
+    }
+    
+    /* Fix mobile keyboard overlap */
+    @media (max-width: 768px) {
+        .stChatFloatingInputContainer {
+            position: fixed !important;
+            bottom: 0 !important;
+            background-color: #1e1e1e !important;
+            padding-bottom: env(safe-area-inset-bottom) !important;
+            z-index: 999 !important;
+        }
+        
+        /* Add padding to bottom of chat to prevent overlap with input */
+        .main .block-container {
+            padding-bottom: 100px !important;
+        }
+        
+        /* Ensure chat scrolls properly */
+        .stChatMessageContainer {
+            margin-bottom: 20px !important;
+        }
+    }
+    
+    /* Fix desktop scroll bounce/drag issue */
+    .main .block-container {
+        overflow-y: auto !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    
+    /* Prevent rubber band scrolling */
+    body {
+        overscroll-behavior-y: none !important;
+        overflow: hidden !important;
+    }
+    
+    /* Smooth scrolling */
+    html {
+        scroll-behavior: smooth !important;
     }
     
     /* Chat messages */
@@ -37,6 +77,8 @@ st.markdown("""
         border-radius: 10px;
         padding: 15px;
         margin: 10px 0;
+        max-width: 100%;
+        word-wrap: break-word;
     }
     
     /* User message */
@@ -49,7 +91,13 @@ st.markdown("""
         background-color: #252525;
     }
     
-    /* Input box */
+    /* Input box - Fixed positioning */
+    .stChatFloatingInputContainer {
+        background-color: #1e1e1e !important;
+        border-top: 1px solid #404040 !important;
+        backdrop-filter: blur(10px) !important;
+    }
+    
     .stTextInput input {
         background-color: #2d2d2d;
         color: white;
@@ -64,10 +112,13 @@ st.markdown("""
         border-radius: 8px;
         border: none;
         padding: 10px 24px;
+        transition: all 0.3s ease;
     }
     
     .stButton button:hover {
         background-color: #45a049;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
     /* Headers */
@@ -89,7 +140,66 @@ st.markdown("""
         border-radius: 5px;
         font-size: 0.9em;
     }
+    
+    /* Loading spinner */
+    .stSpinner > div {
+        border-color: #4CAF50 !important;
+    }
+    
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {
+        .stChatMessage {
+            padding: 12px;
+            font-size: 0.95em;
+        }
+        
+        h1 {
+            font-size: 1.5em !important;
+        }
+        
+        /* Prevent text overflow on mobile */
+        .main {
+            padding: 1rem 0.5rem !important;
+        }
+        
+        /* Better button sizing on mobile */
+        .stButton button {
+            width: 100% !important;
+            margin: 5px 0 !important;
+        }
+    }
+    
+    /* Hide Streamlit branding on mobile for cleaner look */
+    @media (max-width: 768px) {
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+    }
 </style>
+
+<script>
+// Auto-scroll to bottom on new messages (desktop)
+window.addEventListener('load', function() {
+    const mainContainer = document.querySelector('.main');
+    if (mainContainer) {
+        mainContainer.scrollTop = mainContainer.scrollHeight;
+    }
+});
+
+// Hide keyboard on scroll (mobile)
+if (window.innerWidth <= 768) {
+    let lastScrollTop = 0;
+    window.addEventListener('scroll', function() {
+        const st = window.pageYOffset || document.documentElement.scrollTop;
+        if (st > lastScrollTop) {
+            // Scrolling down - blur input to hide keyboard
+            const input = document.querySelector('input[type="text"]');
+            if (input) input.blur();
+        }
+        lastScrollTop = st <= 0 ? 0 : st;
+    }, false);
+}
+</script>
 """, unsafe_allow_html=True)
 
 # Configuration
@@ -349,6 +459,51 @@ for message in st.session_state.messages:
                                 preview = message["raw_docs"][i-1].page_content[:200] + "..."
                                 st.text(preview)
 
+# Add scroll to bottom button (floats on top)
+if len(st.session_state.messages) > 3:
+    st.markdown("""
+    <style>
+        .scroll-button {
+            position: fixed;
+            bottom: 120px;
+            right: 30px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .scroll-button:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+        
+        @media (max-width: 768px) {
+            .scroll-button {
+                bottom: 100px;
+                right: 20px;
+                width: 45px;
+                height: 45px;
+                font-size: 20px;
+            }
+        }
+    </style>
+    <button class="scroll-button" onclick="window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});">
+        ↓
+    </button>
+    """, unsafe_allow_html=True)
+
 # Chat input
 prompt = st.chat_input("Ask about CSR programs... (English or Indonesian)")
 
@@ -387,11 +542,20 @@ if prompt:
         "content": answer,
         "sources": sources
     })
+    
+    # Auto-scroll to bottom after new message
+    st.markdown("""
+    <script>
+        setTimeout(function() {
+            window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+        }, 100);
+    </script>
+    """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #888; font-size: 0.9em;'>
-    <p>CSR FMCG Chatbot | Made by : Marcelino </p>
+    <p>CSR FMCG Chatbot | By : Marcelino </p>
 </div>
 """, unsafe_allow_html=True)
