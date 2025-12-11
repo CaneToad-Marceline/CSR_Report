@@ -392,6 +392,6 @@ if prompt:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #888; font-size: 0.9em;'>
-    <p>CSR FMCG Chatbot | Powered by Groq + FAISS | Data: 2019-2024</p>
+    <p>CSR FMCG Chatbot | Made by : Marcelino </p>
 </div>
 """, unsafe_allow_html=True)
