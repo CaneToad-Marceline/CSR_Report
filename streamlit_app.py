@@ -109,6 +109,9 @@ if "vectorstore" not in st.session_state:
 if "groq_client" not in st.session_state:
     st.session_state.groq_client = None
 
+if "quick_query" not in st.session_state:
+    st.session_state.quick_query = None
+
 # Sidebar
 with st.sidebar:
     st.title("🏭 CSR FMCG Chatbot")
@@ -147,10 +150,33 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Statistics
+    if st.session_state.vectorstore:
+        st.subheader("📊 Statistics")
+        st.metric("Chat Messages", len(st.session_state.messages))
+        st.metric("Total Documents", "25 reports")
+        st.metric("Years Covered", "2019-2024")
+    
+    st.markdown("---")
+    
     # Clear chat button
     if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+    
+    # Export chat history
+    if len(st.session_state.messages) > 0:
+        chat_history = "\n\n".join([
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+            for m in st.session_state.messages
+        ])
+        st.download_button(
+            label="💾 Download Chat",
+            data=chat_history,
+            file_name="csr_chat_history.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
     
     st.markdown("---")
     st.caption("Built with Streamlit + Groq + FAISS")
@@ -275,6 +301,37 @@ def query_chatbot(question, top_k=4, temp=0.3):
 st.title("💬 CSR FMCG Assistant")
 st.markdown("Ask me anything about Corporate Social Responsibility programs of Indonesian FMCG companies!")
 
+# Welcome message when chat is empty
+if len(st.session_state.messages) == 0:
+    st.info("""
+    👋 **Welcome!** I can help you learn about CSR programs from:
+    
+    🏢 **Danone** • **Indofood** • **Mayora** • **Ultra Jaya** • **Unilever**
+    
+    📅 **Data Coverage:** 2019-2024
+    
+    💡 **Try asking:**
+    - "What is Unilever's water conservation program?"
+    - "Apa program CSR Indofood untuk pendidikan?"
+    - "Compare sustainability initiatives across companies"
+    """)
+    
+    # Quick action buttons
+    st.markdown("**🚀 Quick Start:**")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🌊 Water Programs", use_container_width=True):
+            st.session_state.quick_query = "What water conservation programs do these companies have?"
+    
+    with col2:
+        if st.button("⚡ Energy Efficiency", use_container_width=True):
+            st.session_state.quick_query = "Compare energy efficiency initiatives"
+    
+    with col3:
+        if st.button("🎓 Education CSR", use_container_width=True):
+            st.session_state.quick_query = "What education programs are part of CSR?"
+
 # Display chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -283,17 +340,24 @@ for message in st.session_state.messages:
         # Display sources for assistant messages
         if message["role"] == "assistant" and "sources" in message:
             if message["sources"]:
-                st.markdown("---")
-                st.markdown("**📎 Sources:**")
-                sources_text = " • ".join([
-                    f"{s['company']} {s['year']}" 
-                    for s in message["sources"]
-                ])
-                st.markdown(f'<div class="source-box">{sources_text}</div>', 
-                          unsafe_allow_html=True)
+                with st.expander("📎 View Sources", expanded=False):
+                    for i, s in enumerate(message["sources"], 1):
+                        st.markdown(f"**{i}.** {s['company']} - {s['year']}")
+                        if "raw_docs" in message and i <= len(message.get("raw_docs", [])):
+                            with st.container():
+                                st.caption("Preview:")
+                                preview = message["raw_docs"][i-1].page_content[:200] + "..."
+                                st.text(preview)
 
 # Chat input
-if prompt := st.chat_input("Ask about CSR programs... (English or Indonesian)"):
+prompt = st.chat_input("Ask about CSR programs... (English or Indonesian)")
+
+# Handle quick query buttons
+if st.session_state.quick_query and not prompt:
+    prompt = st.session_state.quick_query
+    st.session_state.quick_query = None
+
+if prompt:
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     
