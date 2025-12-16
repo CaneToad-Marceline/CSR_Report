@@ -5,6 +5,7 @@ Run with: streamlit run streamlit_app.py
 
 import streamlit as st
 import os
+import time
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
@@ -69,6 +70,22 @@ st.markdown("""
     /* Smooth scrolling */
     html {
         scroll-behavior: smooth !important;
+    }
+    
+    /* Auto-scroll helper */
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .stChatMessage {
+        animation: slideUp 0.3s ease-out;
     }
     
     /* Chat messages */
@@ -186,6 +203,23 @@ window.addEventListener('load', function() {
     }
 });
 
+// Continuous scroll check for new messages
+let lastHeight = 0;
+setInterval(() => {
+    const main = window.parent.document.querySelector('.main');
+    if (main) {
+        const currentHeight = main.scrollHeight;
+        if (currentHeight !== lastHeight) {
+            // New content detected, scroll to bottom
+            main.scrollTo({
+                top: currentHeight,
+                behavior: 'smooth'
+            });
+            lastHeight = currentHeight;
+        }
+    }
+}, 500);
+
 // Hide keyboard on scroll (mobile)
 if (window.innerWidth <= 768) {
     let lastScrollTop = 0;
@@ -266,6 +300,14 @@ with st.sidebar:
     st.subheader("⚙️ Settings")
     top_k = st.slider("Number of sources", 2, 8, TOP_K_RESULTS)
     temperature = st.slider("Response creativity", 0.0, 1.0, 0.3, 0.1)
+    
+    # Typing animation speed
+    typing_speed = st.select_slider(
+        "Typing animation",
+        options=["Off", "Fast", "Medium", "Slow"],
+        value="Medium",
+        help="Control typing animation speed"
+    )
     
     # Debug mode
     debug_mode = st.checkbox("🔍 Debug Mode", help="Show retrieval details")
@@ -700,19 +742,41 @@ if prompt:
     
     # Generate response
     with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        
+        # Show thinking indicator
         with st.spinner("Thinking..."):
             answer, sources = query_chatbot(prompt, top_k, temperature)
-            
-            # Show debug info if enabled
-            if 'debug_mode' in locals() and debug_mode:
-                with st.expander("🔍 Debug Info", expanded=False):
-                    st.write("**Retrieved Sources:**")
-                    for i, s in enumerate(sources, 1):
-                        st.write(f"{i}. {s['company']} - {s['year']}")
-                    st.write(f"**Bot Mood:** {st.session_state.bot_mood}")
-                    st.write(f"**Question detected company:** {[c for c in ['danone', 'indofood', 'mayora', 'ultra jaya', 'unilever'] if c in prompt.lower()]}")
-            
-            st.markdown(answer)
+        
+        # Typing animation
+        typing_delays = {
+            "Off": 0,
+            "Fast": 0.01,
+            "Medium": 0.03,
+            "Slow": 0.05
+        }
+        delay = typing_delays.get(typing_speed, 0.03)
+        
+        if delay > 0:
+            full_response = ""
+            for chunk in answer.split():
+                full_response += chunk + " "
+                message_placeholder.markdown(full_response + "▌")
+                time.sleep(delay)
+            # Show final answer without cursor
+            message_placeholder.markdown(answer)
+        else:
+            # No animation, show immediately
+            message_placeholder.markdown(answer)
+        
+        # Show debug info if enabled
+        if 'debug_mode' in locals() and debug_mode:
+            with st.expander("🔍 Debug Info", expanded=False):
+                st.write("**Retrieved Sources:**")
+                for i, s in enumerate(sources, 1):
+                    st.write(f"{i}. {s['company']} - {s['year']}")
+                st.write(f"**Bot Mood:** {st.session_state.bot_mood}")
+                st.write(f"**Question detected company:** {[c for c in ['danone', 'indofood', 'mayora', 'ultra jaya', 'unilever'] if c in prompt.lower()]}")
             
             # Display sources
             if sources:
