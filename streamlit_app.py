@@ -267,12 +267,20 @@ with st.sidebar:
     top_k = st.slider("Number of sources", 2, 8, TOP_K_RESULTS)
     temperature = st.slider("Response creativity", 0.0, 1.0, 0.3, 0.1)
     
+    # Debug mode
+    debug_mode = st.checkbox("🔍 Debug Mode", help="Show retrieval details")
+    
     st.markdown("---")
     
     # Statistics
     if st.session_state.vectorstore:
         st.subheader("📊 Statistics")
         st.metric("Chat Messages", len(st.session_state.messages))
+        
+        # Show conversation memory status
+        memory_status = "✅ Active" if len(st.session_state.messages) > 0 else "⏸️ None"
+        st.metric("Memory", memory_status)
+        
         st.metric("Total Documents", "25 reports")
         st.metric("Years Covered", "2019-2024")
         
@@ -368,6 +376,9 @@ if st.session_state.groq_client is None:
 # Prompt template
 PROMPT_TEMPLATE = """You are a helpful assistant specialized in Corporate Social Responsibility (CSR) information for Indonesian FMCG companies.
 
+Previous conversation context:
+{conversation_history}
+
 Use the following context from CSR reports to answer the question.
 
 Context:
@@ -376,6 +387,8 @@ Context:
 Question: {question}
 
 Instructions:
+- Consider the previous conversation when answering
+- If the question refers to "it", "that", "the company", etc., use context from previous messages
 - Answer based on the provided context
 - Mention specific company and year when relevant
 - Be concise but informative
@@ -516,14 +529,43 @@ def query_chatbot(question, top_k=4, temp=0.3):
         return personality_response, []
     
     # Normal RAG query
-    # Retrieve relevant documents
-    relevant_docs = st.session_state.vectorstore.similarity_search(question, k=top_k)
+    # Retrieve relevant documents with higher k for better coverage
+    relevant_docs = st.session_state.vectorstore.similarity_search(question, k=top_k * 2)
+    
+    # Filter by company if mentioned in question
+    mentioned_companies = ["danone", "indofood", "mayora", "ultra jaya", "ultra_jaya", "unilever"]
+    company_filter = None
+    for company in mentioned_companies:
+        if company.lower() in question.lower():
+            company_filter = company.replace("_", " ").title()
+            if "ultra" in company.lower():
+                company_filter = "Ultra_jaya"
+            break
+    
+    # Prioritize docs from mentioned company
+    if company_filter:
+        filtered_docs = [doc for doc in relevant_docs if doc.metadata['company'].lower() == company_filter.lower()]
+        other_docs = [doc for doc in relevant_docs if doc.metadata['company'].lower() != company_filter.lower()]
+        # Use at least half from the mentioned company
+        relevant_docs = filtered_docs[:max(2, top_k//2)] + other_docs[:top_k//2]
+    else:
+        relevant_docs = relevant_docs[:top_k]
     
     # Prepare context
     context = "\n\n---\n\n".join([
         f"Source: {doc.metadata['company']} {doc.metadata['year']}\n{doc.page_content}"
         for doc in relevant_docs
     ])
+    
+    # Prepare conversation history (last 4 messages for context)
+    conversation_history = ""
+    recent_messages = st.session_state.messages[-4:] if len(st.session_state.messages) > 0 else []
+    for msg in recent_messages:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        conversation_history += f"{role}: {msg['content'][:200]}...\n"
+    
+    if not conversation_history:
+        conversation_history = "No previous conversation."
     
     # Adjust system prompt based on mood
     mood_instructions = {
@@ -537,8 +579,12 @@ def query_chatbot(question, top_k=4, temp=0.3):
     system_content = mood_instructions.get(st.session_state.bot_mood, 
                                            "You are a helpful assistant specialized in Corporate Social Responsibility information for Indonesian FMCG companies.")
     
-    # Create prompt
-    prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+    # Create prompt with conversation history
+    prompt = PROMPT_TEMPLATE.format(
+        conversation_history=conversation_history,
+        context=context, 
+        question=question
+    )
     
     # Query Groq
     try:
@@ -656,6 +702,16 @@ if prompt:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             answer, sources = query_chatbot(prompt, top_k, temperature)
+            
+            # Show debug info if enabled
+            if 'debug_mode' in locals() and debug_mode:
+                with st.expander("🔍 Debug Info", expanded=False):
+                    st.write("**Retrieved Sources:**")
+                    for i, s in enumerate(sources, 1):
+                        st.write(f"{i}. {s['company']} - {s['year']}")
+                    st.write(f"**Bot Mood:** {st.session_state.bot_mood}")
+                    st.write(f"**Question detected company:** {[c for c in ['danone', 'indofood', 'mayora', 'ultra jaya', 'unilever'] if c in prompt.lower()]}")
+            
             st.markdown(answer)
             
             # Display sources
