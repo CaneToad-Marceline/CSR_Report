@@ -301,13 +301,7 @@ with st.sidebar:
     top_k = st.slider("Number of sources", 2, 8, TOP_K_RESULTS)
     temperature = st.slider("Response creativity", 0.0, 1.0, 0.3, 0.1)
     
-    # Typing animation speed
-    typing_speed = st.select_slider(
-        "Typing animation",
-        options=["Off", "Fast", "Medium", "Slow"],
-        value="Medium",
-        help="Control typing animation speed"
-    )
+
     
     # Debug mode
     debug_mode = st.checkbox("🔍 Debug Mode", help="Show retrieval details")
