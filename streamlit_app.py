@@ -374,10 +374,20 @@ with st.sidebar:
 @st.cache_resource
 def load_vectorstore():
     """Load FAISS vector database with HF token"""
-    import os
     
-    # Get HuggingFace token from secrets or env
-    hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
+    # Get HuggingFace token with proper fallbacks
+    hf_token = None
+    
+    # Try Streamlit secrets first
+    try:
+        if hasattr(st, 'secrets') and 'HF_TOKEN' in st.secrets:
+            hf_token = st.secrets["HF_TOKEN"]
+    except Exception:
+        pass
+    
+    # Fallback to environment variable
+    if not hf_token:
+        hf_token = os.getenv("HF_TOKEN")
     
     # Set token for sentence-transformers
     if hf_token:
