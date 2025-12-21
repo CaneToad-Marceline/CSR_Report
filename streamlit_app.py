@@ -866,7 +866,7 @@ if prompt:
         
         # Show thinking indicator
         with st.spinner("Thinking..."):
-            answer, sources = query_chatbot(prompt, top_k, temperature)
+            answer, sources, raw_docs = query_chatbot(prompt, top_k, temperature)
         
         # Typing animation
         typing_delays = {
