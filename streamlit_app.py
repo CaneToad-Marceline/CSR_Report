@@ -158,6 +158,28 @@ st.markdown("""
         font-size: 0.9em;
     }
     
+    /* Citation numbers in text */
+    sup {
+        color: #4CAF50;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    
+    /* Source cards */
+    .source-card {
+        background: linear-gradient(135deg, #2d2d2d 0%, #3d3d3d 100%);
+        padding: 12px;
+        border-radius: 8px;
+        border-left: 3px solid #4CAF50;
+        margin: 8px 0;
+        transition: transform 0.2s ease;
+    }
+    
+    .source-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+    
     /* Loading spinner */
     .stSpinner > div {
         border-color: #4CAF50 !important;
@@ -578,7 +600,7 @@ def query_chatbot(question, top_k=4, temp=0.3):
     generic = ["hi", "hello", "test", "tes", "coba", "halo", "hey", "hai"]
     if question.lower().strip() in generic and repeat_count >= 3:
         personality_response = get_personality_prefix(question, repeat_count)
-        return personality_response, []
+        return personality_response, [], []
     
     # Normal RAG query
     # Retrieve relevant documents with higher k for better coverage
@@ -603,11 +625,13 @@ def query_chatbot(question, top_k=4, temp=0.3):
     else:
         relevant_docs = relevant_docs[:top_k]
     
-    # Prepare context
-    context = "\n\n---\n\n".join([
-        f"Source: {doc.metadata['company']} {doc.metadata['year']}\n{doc.page_content}"
-        for doc in relevant_docs
-    ])
+    # Prepare context with citation markers
+    context_parts = []
+    for idx, doc in enumerate(relevant_docs, 1):
+        context_parts.append(
+            f"[{idx}] Source: {doc.metadata['company']} {doc.metadata['year']}\n{doc.page_content}"
+        )
+    context = "\n\n---\n\n".join(context_parts)
     
     # Prepare conversation history (last 4 messages for context)
     conversation_history = ""
@@ -631,12 +655,30 @@ def query_chatbot(question, top_k=4, temp=0.3):
     system_content = mood_instructions.get(st.session_state.bot_mood, 
                                            "You are a helpful assistant specialized in Corporate Social Responsibility information for Indonesian FMCG companies.")
     
-    # Create prompt with conversation history
-    prompt = PROMPT_TEMPLATE.format(
-        conversation_history=conversation_history,
-        context=context, 
-        question=question
-    )
+    # Enhanced prompt with citation instructions
+    enhanced_prompt = f"""You are a helpful assistant specialized in Corporate Social Responsibility (CSR) information for Indonesian FMCG companies.
+
+Previous conversation context:
+{conversation_history}
+
+Use the following context from CSR reports to answer the question. Each source is marked with [1], [2], etc.
+
+Context:
+{context}
+
+Question: {question}
+
+Instructions:
+- Consider the previous conversation when answering
+- When you use information from a source, add the citation number like [1] or [2] right after the relevant statement
+- Use multiple citations if information comes from different sources: [1][2]
+- Answer based on the provided context
+- Mention specific company and year when relevant
+- Be concise but informative
+- You can answer in English or Indonesian
+- If you don't have enough information, say so honestly
+
+Answer with inline citations:"""
     
     # Query Groq
     try:
@@ -648,7 +690,7 @@ def query_chatbot(question, top_k=4, temp=0.3):
                 },
                 {
                     "role": "user",
-                    "content": prompt
+                    "content": enhanced_prompt
                 }
             ],
             model=GROQ_MODEL,
@@ -661,22 +703,46 @@ def query_chatbot(question, top_k=4, temp=0.3):
         # Add personality to response
         answer_with_personality = add_personality_to_response(answer, question, repeat_count)
         
-        # Format sources
+        # Format sources with metadata
         sources = []
         seen = set()
-        for doc in relevant_docs:
+        for idx, doc in enumerate(relevant_docs, 1):
             key = f"{doc.metadata['company']}_{doc.metadata['year']}"
             if key not in seen:
                 sources.append({
+                    "id": idx,
                     "company": doc.metadata['company'],
-                    "year": doc.metadata['year']
+                    "year": doc.metadata['year'],
+                    "chunk_id": doc.metadata.get('chunk_id', ''),
+                    "page_count": doc.metadata.get('page_count', 0),
+                    "preview": doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content
                 })
                 seen.add(key)
         
-        return answer_with_personality, sources
+        return answer_with_personality, sources, relevant_docs
     
     except Exception as e:
-        return f"Error: {str(e)} 😵", []
+        error_msg = str(e)
+        
+        # Better error messages
+        if "401" in error_msg or "invalid" in error_msg.lower():
+            st.error("🔑 **API Key Error**")
+            st.error("Your Groq API key is invalid or expired.")
+            st.info("**Solution:**")
+            st.write("1. Go to https://console.groq.com/keys")
+            st.write("2. Create a new API key")
+            st.write("3. Update in Streamlit Settings → Secrets")
+            st.write("4. Reboot the app")
+            return "❌ API Key invalid. Please update your key in app settings.", [], []
+        
+        elif "429" in error_msg or "rate" in error_msg.lower():
+            return "⏳ Rate limit reached. Please wait a moment and try again.", [], []
+        
+        elif "500" in error_msg or "502" in error_msg:
+            return "⚠️ Groq API is temporarily unavailable. Try again in a few seconds.", [], []
+        
+        else:
+            return f"Error: {error_msg} 😵", [], []
 
 # Main chat interface
 st.title("💬 CSR FMCG Assistant")
@@ -718,17 +784,61 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # Display sources for assistant messages
-        if message["role"] == "assistant" and "sources" in message:
-            if message["sources"]:
-                with st.expander("📎 View Sources", expanded=False):
-                    for i, s in enumerate(message["sources"], 1):
-                        st.markdown(f"**{i}.** {s['company']} - {s['year']}")
-                        if "raw_docs" in message and i <= len(message.get("raw_docs", [])):
-                            with st.container():
-                                st.caption("Preview:")
-                                preview = message["raw_docs"][i-1].page_content[:200] + "..."
-                                st.text(preview)
+        # Display Perplexity-style sources for assistant messages
+        if message["role"] == "assistant" and "sources" in message and message["sources"]:
+            st.markdown("---")
+            st.markdown("**📚 Sources:**")
+            
+            # Display in grid
+            sources = message["sources"]
+            cols = st.columns(min(len(sources), 3))
+            
+            for idx, source in enumerate(sources):
+                with cols[idx % 3]:
+                    # Compact source card
+                    st.markdown(
+                        f"""
+                        <div style="
+                            background: linear-gradient(135deg, #2d2d2d 0%, #3d3d3d 100%);
+                            padding: 12px;
+                            border-radius: 8px;
+                            border-left: 3px solid #4CAF50;
+                            margin: 5px 0;
+                        ">
+                            <div style="font-size: 0.9em; color: #4CAF50; font-weight: bold;">
+                                [{source['id']}] {source['company']}
+                            </div>
+                            <div style="font-size: 0.8em; color: #b0b0b0;">
+                                Year: {source['year']} | Pages: {source['page_count']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    
+                    # Expandable preview
+                    with st.expander("📖 Preview", expanded=False):
+                        st.caption(source['preview'])
+                        
+                        # View full context button
+                        if 'raw_docs' in message and idx < len(message.get('raw_docs', [])):
+                            if st.button("📄 Full Text", key=f"view_msg_{len(st.session_state.messages)}_{idx}", use_container_width=True):
+                                st.session_state[f'show_modal_{idx}'] = True
+                            
+                            # Show in expander instead of modal (Streamlit limitation)
+                            if st.session_state.get(f'show_modal_{idx}', False):
+                                with st.container():
+                                    st.markdown(f"### Full Context: {source['company']} {source['year']}")
+                                    st.markdown("---")
+                                    st.text_area(
+                                        "Full Content",
+                                        message['raw_docs'][idx].page_content,
+                                        height=300,
+                                        key=f"full_text_{len(st.session_state.messages)}_{idx}"
+                                    )
+                                    if st.button("✖️ Close", key=f"close_{len(st.session_state.messages)}_{idx}"):
+                                        st.session_state[f'show_modal_{idx}'] = False
+                                        st.rerun()
 
 # Add scroll anchor at the bottom
 scroll_anchor = st.empty()
