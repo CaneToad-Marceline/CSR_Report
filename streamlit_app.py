@@ -500,8 +500,7 @@ def get_personality_prefix(question, repeat_count):
         st.session_state.bot_mood = "friendly"
         prefixes = [
             "",  # No prefix, just answer normally
-            "Sure! ",
-            "Happy to help! ",
+            "sini aku jawab! ",
         ]
     
     elif repeat_count == 2:
