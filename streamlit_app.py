@@ -607,13 +607,22 @@ def query_chatbot(question, top_k=4, temp=0.3):
     relevant_docs = st.session_state.vectorstore.similarity_search(question, k=top_k * 2)
     
     # Detect company mentioned in CURRENT question (not previous context)
+    # Include common aliases and misspellings
     mentioned_companies = {
         "danone": "Danone",
-        "indofood": "Indofood", 
+        "dano": "Danone",  # Common abbreviation
+        "aqua": "Danone",  # Danone owns Aqua
+        "indofood": "Indofood",
+        "indomie": "Indofood",  # Popular brand
         "mayora": "Mayora",
+        "kopiko": "Mayora",  # Popular brand
         "ultra jaya": "Ultra_jaya",
         "ultra_jaya": "Ultra_jaya",
-        "unilever": "Unilever"
+        "ultra": "Ultra_jaya",
+        "ultrajaya": "Ultra_jaya",
+        "unilever": "Unilever",
+        "lifebuoy": "Unilever",  # Popular brand
+        "dove": "Unilever",  # Popular brand
     }
     
     company_filter = None
@@ -649,14 +658,35 @@ def query_chatbot(question, top_k=4, temp=0.3):
         # Get docs from mentioned company
         company_docs = [doc for doc in relevant_docs if doc.metadata['company'] == company_filter]
         
+        # Check if we have ANY data for this company
+        if len(company_docs) == 0:
+            # No data found for this company!
+            st.warning(f"⚠️ **Data untuk {company_filter} tidak tersedia**")
+            st.info("""
+            Kemungkinan:
+            - PDF {company} belum ter-extract dengan baik
+            - File CSR {company} mungkin corrupt atau kosong
+            - Folder {company} tidak memiliki data CSR yang cukup
+            
+            Perusahaan yang tersedia: Indofood, Mayora, Ultra Jaya, Unilever
+            """.format(company=company_filter))
+            
+            # Return helpful message
+            return (
+                f"Maaf, saya tidak memiliki data CSR untuk {company_filter} dalam database saya. "
+                f"Saya hanya memiliki informasi tentang: Indofood, Mayora, Ultra Jaya, dan Unilever. "
+                f"Silakan tanya tentang perusahaan lain! 😊",
+                [],
+                []
+            )
+        
         # If we found enough docs from that company, use only those
         if len(company_docs) >= top_k // 2:
             relevant_docs = company_docs[:top_k]
         else:
-            # Not enough docs from that company, prioritize but include some others
-            other_docs = [doc for doc in relevant_docs if doc.metadata['company'] != company_filter]
-            relevant_docs = company_docs + other_docs[:top_k - len(company_docs)]
-            relevant_docs = relevant_docs[:top_k]
+            # Not enough docs from that company, but use what we have
+            st.info(f"ℹ️ Data {company_filter} terbatas, menampilkan {len(company_docs)} dokumen")
+            relevant_docs = company_docs[:top_k]
     else:
         # No specific company mentioned, use top results
         relevant_docs = relevant_docs[:top_k]
@@ -790,7 +820,7 @@ if len(st.session_state.messages) == 0:
     st.info("""
     👋 **Welcome!** I can help you learn about CSR programs from:
     
-    🏢 **Danone (DANO)** • **Indofood (INDF)** • **Mayora (MYOR)** • **Ultra Jaya (ULTJ)** • **Unilever (UNVR)**
+    🏢 **Danone** • **Indofood** • **Mayora** • **Ultra Jaya** • **Unilever**
     
     📅 **Data Coverage:** 2019-2024
     
