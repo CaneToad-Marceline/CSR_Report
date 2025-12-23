@@ -606,23 +606,59 @@ def query_chatbot(question, top_k=4, temp=0.3):
     # Retrieve relevant documents with higher k for better coverage
     relevant_docs = st.session_state.vectorstore.similarity_search(question, k=top_k * 2)
     
-    # Filter by company if mentioned in question
-    mentioned_companies = ["danone", "indofood", "mayora", "ultra jaya", "ultra_jaya", "unilever"]
+    # Detect company mentioned in CURRENT question (not previous context)
+    mentioned_companies = {
+        "danone": "Danone",
+        "indofood": "Indofood", 
+        "mayora": "Mayora",
+        "ultra jaya": "Ultra_jaya",
+        "ultra_jaya": "Ultra_jaya",
+        "unilever": "Unilever"
+    }
+    
     company_filter = None
-    for company in mentioned_companies:
-        if company.lower() in question.lower():
-            company_filter = company.replace("_", " ").title()
-            if "ultra" in company.lower():
-                company_filter = "Ultra_jaya"
+    question_lower = question.lower()
+    
+    # Check current question for company name
+    for keyword, company_name in mentioned_companies.items():
+        if keyword in question_lower:
+            company_filter = company_name
             break
     
-    # Prioritize docs from mentioned company
+    # If no company in current question, check if referring to previous context
+    if not company_filter and len(st.session_state.messages) >= 2:
+        # Look at last user message for company context
+        last_user_msg = None
+        for msg in reversed(st.session_state.messages):
+            if msg["role"] == "user":
+                last_user_msg = msg["content"].lower()
+                break
+        
+        # Only inherit company if current question seems like a follow-up
+        follow_up_words = ["itu", "tersebut", "nya", "lainnya", "lain", "juga", "bagaimana", "gimana"]
+        is_follow_up = any(word in question_lower for word in follow_up_words)
+        
+        if is_follow_up and last_user_msg:
+            for keyword, company_name in mentioned_companies.items():
+                if keyword in last_user_msg:
+                    company_filter = company_name
+                    break
+    
+    # Strong filtering: if company explicitly mentioned, ONLY show that company
     if company_filter:
-        filtered_docs = [doc for doc in relevant_docs if doc.metadata['company'].lower() == company_filter.lower()]
-        other_docs = [doc for doc in relevant_docs if doc.metadata['company'].lower() != company_filter.lower()]
-        # Use at least half from the mentioned company
-        relevant_docs = filtered_docs[:max(2, top_k//2)] + other_docs[:top_k//2]
+        # Get docs from mentioned company
+        company_docs = [doc for doc in relevant_docs if doc.metadata['company'] == company_filter]
+        
+        # If we found enough docs from that company, use only those
+        if len(company_docs) >= top_k // 2:
+            relevant_docs = company_docs[:top_k]
+        else:
+            # Not enough docs from that company, prioritize but include some others
+            other_docs = [doc for doc in relevant_docs if doc.metadata['company'] != company_filter]
+            relevant_docs = company_docs + other_docs[:top_k - len(company_docs)]
+            relevant_docs = relevant_docs[:top_k]
     else:
+        # No specific company mentioned, use top results
         relevant_docs = relevant_docs[:top_k]
     
     # Prepare context with citation markers
@@ -668,17 +704,18 @@ Context:
 
 Question: {question}
 
-Instructions:
-- Consider the previous conversation when answering
+IMPORTANT INSTRUCTIONS:
+- If the user asks about a SPECIFIC company (e.g., "Danone"), ONLY discuss that company
+- Do NOT mention other companies unless explicitly asked to compare
 - When you use information from a source, add the citation number like [1] or [2] right after the relevant statement
 - Use multiple citations if information comes from different sources: [1][2]
-- Answer based on the provided context
+- Consider the previous conversation for context, but prioritize the current question
 - Mention specific company and year when relevant
 - Be concise but informative
 - You can answer in English or Indonesian
-- If you don't have enough information, say so honestly
+- If you don't have enough information about the requested company, say so honestly
 
-Answer with inline citations:"""
+Answer with inline citations (focus on the company mentioned in the question):"""
     
     # Query Groq
     try:
@@ -896,7 +933,18 @@ if prompt:
                 for i, s in enumerate(sources, 1):
                     st.write(f"{i}. {s['company']} - {s['year']}")
                 st.write(f"**Bot Mood:** {st.session_state.bot_mood}")
-                st.write(f"**Question detected company:** {[c for c in ['danone', 'indofood', 'mayora', 'ultra jaya', 'unilever'] if c in prompt.lower()]}")
+                
+                # Show company filtering info
+                detected_company = [c for c in ['danone', 'indofood', 'mayora', 'ultra jaya', 'unilever'] if c in prompt.lower()]
+                if detected_company:
+                    st.success(f"🎯 Filtered by: {detected_company[0].title()}")
+                else:
+                    st.info("📊 Showing results from all companies")
+        
+        # Show company filter indicator (always visible when filtered)
+        if sources and len(set(s['company'] for s in sources)) == 1:
+            filtered_company = sources[0]['company']
+            st.info(f"🎯 **Showing results from: {filtered_company}**")
             
             # Display sources
             if sources:
