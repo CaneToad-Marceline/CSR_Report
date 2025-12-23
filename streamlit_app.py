@@ -790,7 +790,7 @@ if len(st.session_state.messages) == 0:
     st.info("""
     👋 **Welcome!** I can help you learn about CSR programs from:
     
-    🏢 **Danone** • **Indofood** • **Mayora** • **Ultra Jaya** • **Unilever**
+    🏢 **Danone (DANO)** • **Indofood (INDF)** • **Mayora (MYOR)** • **Ultra Jaya (ULTJ)** • **Unilever (UNVR)**
     
     📅 **Data Coverage:** 2019-2024
     
